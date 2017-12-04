@@ -12,6 +12,8 @@
 
 [**3: Completion statistics with unfinished tasks**](https://github.com/larryfenn/Testing-GitHub-Markdown/blob/master/articles/03-completion-zero/03-completion-zero.md)
 
+[**4: Plain markdown**](https://github.com/larryfenn/Testing-GitHub-Markdown/blob/master/articles/04-plain-markdown/04-plain-markdown.md)
+
 
 # Notes for Nerds
 
