@@ -16,3 +16,7 @@
 *Here is where we would put the more technical notes for people more interested than just reading*
 
 Each article lives in a subdirectory `/articles/##-article-name/`. The Rmarkdown code and data to generate the article can be found in that subdirectory.
+
+## Dependencies
+
+Most articles require the `readr`,  `ggplot` and `apstyle` packages.
