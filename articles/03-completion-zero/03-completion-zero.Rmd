@@ -1,0 +1,116 @@
+---
+title: "3: Completion statistics with unfinished tasks"
+output: github_document
+---
+# Statistics for open-ended tasks {#completion-zero}
+
+## Problem
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+library(tidyverse)
+set.seed(1)
+# First, we generate our bogus data.
+n_items <- 400
+groups <- c("A", "B", "C", "D")
+# Tasks are assigned to groups in a 20 20 20 40 ratio
+group_column <- sample(groups, n_items, replace = T, prob = c(.2, .2, .2, .4))
+# Tasks generally have estimates lognormally distributed around ~7 days, st dev ~1.6 days
+estimates_column <- round(rlnorm(n_items, mean = 2, sd = .5))
+# Task completion times are lognormally distributed about their estimate, st dev ~1 days
+actual_column <- round(sapply(estimates_column, function(x) {rlnorm(1, mean = log(x), sd = .5)}))
+# Any given task has a 15% chance of being still incomplete
+actual_column <- actual_column * (1 - rbinom(n_items, 1, .15))
+
+data <- data.frame(group_column, estimates_column, actual_column) %>%
+# To actually simulate the situation properly, let's assign Inf to the incompletes
+  mutate(actual_column = ifelse(actual_column == 0, Inf, actual_column))
+```
+
+*Setup*: There's four groups, with tasks assigned to each group. Tasks have an estimated completion time and an actual completion time; if no completion time exists yet, that is logged as `Inf`.
+
+*Problem*: Having infinite values in data rules out a lot of data exploration and analysis.
+
+## Solution
+
+Below is a plot of tasks by completion time. The estimate is indicated by the black line. Tasks that have not finished yet run off the right hand side of the plot.
+
+```{r}
+# Let's just look at the data, first; plot an excerpt of it
+# pre-compute graph window size:
+window_max <- (data %>% mutate(index = row_number()) %>% filter(index < 25, is.finite(actual_column)) %>% summarize(max = max(actual_column)))$max
+data %>% mutate(index = row_number()) %>% filter(index < 25) %>% ggplot(aes(x = index, y = actual_column, fill = group_column)) + geom_bar(stat = 'identity') + geom_errorbar(aes(ymin = estimates_column, ymax = estimates_column)) + coord_flip(ylim = c(0, window_max)) + labs(title = "Fig. 1: Starting data", x = "", y = "Time") + theme(legend.position = 'none', panel.background = element_blank(), axis.ticks.y = element_blank(), axis.text.y = element_blank(), panel.grid.major.x = element_line(color = 'grey')) + scale_fill_manual(values = c("#146994", "#669900", "#D19600", "#664675"))
+
+# The infinite cases go off the right hand side of this graph. How to handle?
+```
+
+### Scaling
+The first step is to scale every task by the estimated time. In terms of interpretation, this is equivalent to converting all of our completion times into percentages of the estimate.
+
+```{r}
+# Step 1 of our data transformation: scale everything by estimated time first
+data_scaled <- data %>% mutate(completion_scaled = actual_column / estimates_column) %>% select(group_column, completion_scaled)
+
+# The same plot from before, but now with everything scaled
+data_scaled %>% mutate(index = row_number()) %>% filter(index < 25) %>% ggplot(aes(x = index, y = completion_scaled, fill = group_column)) + geom_bar(stat = 'identity') + geom_hline(yintercept = 1) + coord_flip(ylim = c(0, 1.5)) + labs(title = "Fig. 2: Data (scaled)", x = "", y = "Time (%)") + theme(legend.position = 'none', panel.background = element_blank(), axis.ticks.y = element_blank(), axis.text.y = element_blank(), panel.grid.major.x = element_line(color = 'grey')) + scale_fill_manual(values = c("#146994", "#669900", "#D19600", "#664675"))
+```
+
+### Transformation
+Now we need to perform the main transformation. Note that with the `Inf` encoding, tasks are indeed ordered in the right order:
+
+- Tasks that are completed under estimate are on one side of `1`, with more quickly finished tasks closer to `0`.
+
+- Tasks that are completed over estimate are on the other side of `1`, with incomplete tasks off to infinity on the right hand side.
+
+The key is to think about the two extreme cases:
+
+* Tasks that are finished instantly, regardless of estimate (`actual time = 0`, in other words).
+
+* Tasks that are incomplete (`actual time = Inf`).
+
+Of these two cases, it turns out that incomplete tasks are far more frequent than tasks that are finished instantly; and in some sense, if the tasks are well-defined enough, tasks that are finished instantly are not possible in our data.
+
+All other things being equal, tasks that finish exactly as estimated will be our reference point; the other two cases (instantly finished tasks and incomplete tasks), we swap via a transformation. The transformation that swaps `0` and `Inf` is `f: x -> 1/x`.
+
+However, `1/x` has the effect of reversing the order as well: `1 < 2` but `1/1 > 1/2`. This is okay if we can keep that in mind, but since we've already gone through the trouble of applying this transformation, we can also fix that here: `f: x -> -1/x` will swap `0` and `Inf`, while preserving the order: `1 < 2` and `-1/1 < -1/2`.
+
+```{r}
+# Now: we want to keep the ordering: projects that are still in progress are at one extreme (+), and projects that have finished are at the other (-)-- with faster projects (scaled by estimate) representing more negative quantities.
+# The trick is to flip this around: it's exceedingly rare, if not impossible, for a project to finish in 0 time; while in progress projects are a common occurence
+# So the operation 1/x does the trick
+# However, 1/x will flip the order as well: 1 < 2, but 1/1 > 1/2
+# If order matters, then we use -1/x to preserve the order. Otherwise, keep in mind that smaller values <-> more time taken now.
+data_transformed <- data_scaled %>% mutate(completion_transformed = -1 / completion_scaled) %>% select(group_column, completion_transformed)
+data_transformed %>% mutate(index = row_number()) %>% filter(index < 25) %>% ggplot(aes(x = index, y = completion_transformed, fill = group_column)) + geom_bar(stat = 'identity') + geom_hline(yintercept = -1) + coord_flip() + labs(title = "Fig. 3: Data (transformed)", x = "", y = "Time (transformed)") + theme(legend.position = 'none', panel.background = element_blank(), axis.ticks.y = element_blank(), axis.text.y = element_blank(), panel.grid.major.x = element_line(color = 'grey')) + scale_fill_manual(values = c("#146994", "#669900", "#D19600", "#664675"))
+```
+
+It turns out that `f: x -> 1/x` has a physical interpretation if `x` is in units of time: it's the frequency. Whether or not this is useful depends on the context of where the task data comes from.
+
+## So what?
+
+Now we can do histograms and boxplots and the like without having to worry about infinite values blowing us up. The `0` bin will 'hold on' to all the incomplete tasks for us, and due to the way we've scaled things, all the tasks that have gone over the estimation will fall into the range between `-1` and `0`.
+
+### Histograms
+```{r}
+data_transformed %>% ggplot(aes(x = completion_transformed)) + geom_histogram(aes(y = ..density..), fill = '#5D5A58') + labs(title = "Fig. 4: Example histogram", x = "Transformed Time", y = "Density") + theme(legend.position = 'none', panel.background = element_blank(), panel.grid.major = element_line(color = 'grey'))
+```
+
+```{r}
+data_transformed %>% ggplot(aes(x = completion_transformed, fill = group_column)) + geom_histogram(aes(y = ..density..)) + facet_wrap(~group_column) + labs(title = "Fig. 5: Example histograms (small multiples)", x = "Transformed Time", y = "Density") + theme(legend.position = 'none', panel.background = element_blank(), panel.grid.major = element_line(color = 'grey')) + scale_fill_manual(values = c("#146994", "#669900", "#D19600", "#664675"))
+```
+
+### Boxplots
+
+The improvement here over simply throwing out the incomplete tasks is now those data points actually contribute to the statistical picture: incomplete tasks now contribute to pushing the boxplots closer to the x-axis (up, in this picture), and more rapidly completed tasks now push the boxplot down.
+
+```{r}
+# The same information, but in boxplot form
+data_transformed %>% ggplot(aes(x = group_column, y = completion_transformed, color = group_column, fill = group_column)) + geom_boxplot(width = .3) + geom_jitter(width = .1) + geom_hline(yintercept = -1, color = 'black') + labs(title = "Fig. 6: Example boxplots", x = "Group", y = "Density") + theme(legend.position = 'none', panel.background = element_blank(), panel.grid.major.y = element_line(color = 'grey'), axis.ticks.x = element_blank()) + scale_color_manual(values = c("#146994", "#669900", "#D19600", "#664675")) + scale_fill_manual(values = c("#72A5BE", "#AFC8A0", "#E6B975", "#B8B5C8"))
+```
+
+## Other directions
+
+- If you only have task completion times without estimates, it is possible to do the same transformation. Instead of scaling all task times by estimates as before, the key is to try to work only on a groups of tasks that have the same 'complexity' scale.
+
+- Methods from survival analysis can also be used to study open-ended intervals in time.
+
+[**Back to Table of Contents**](https://github.com/larryfenn/Testing-GitHub-Markdown)

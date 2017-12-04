@@ -10,6 +10,8 @@
 
 [**2: Other Article**](https://github.com/larryfenn/Testing-GitHub-Markdown/blob/master/articles/02-other-article/02-other-article.md)
 
+[**3: Completion statistics with unfinished tasks**](https://github.com/larryfenn/Testing-GitHub-Markdown/blob/master/articles/03-completion-zero/03-completion-zero.md)
+
 
 # Notes for Nerds
 
