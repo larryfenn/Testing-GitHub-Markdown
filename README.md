@@ -8,7 +8,7 @@
 
 [**1: Test Article**](https://github.com/larryfenn/Testing-GitHub-Markdown/blob/master/articles/01-test-article/01-test-article.md)
 
-[**2: Other Article**](https://github.com/larryfenn/Testing-GitHub-Markdown/blob/master/articles/01-test-article/02-other-article.md)
+[**2: Other Article**](https://github.com/larryfenn/Testing-GitHub-Markdown/blob/master/articles/02-other-article/02-other-article.md)
 
 
 # Notes for Nerds
